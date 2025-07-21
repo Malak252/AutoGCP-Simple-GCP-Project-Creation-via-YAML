@@ -1,0 +1,251 @@
+# Multi-Cloud Infrastructure Configuration
+# This file defines what infrastructure to deploy across AWS and GCP
+
+project:
+  name: "my-app"
+  environment: "dev"  # Will be used as workspace name
+  region:
+    aws: "us-west-2"
+    gcp: "us-central1"
+
+# AWS Configuration
+aws:
+  enabled: true
+
+  # EKS Kubernetes Clusters
+  eks:
+    enabled: true
+    clusters:
+      - name: "primary"
+        node_groups:
+          - name: "workers"
+            instance_types: ["t3.medium"]
+            min_size: 1
+            max_size: 3
+            desired_size: 2
+            disk_size: 20
+        endpoint_private_access: true
+        endpoint_public_access: true
+        kubernetes_version: "1.28"
+        tags:
+          Environment: "dev"
+          Team: "platform"
+
+  # Lambda Functions
+  lambda:
+    enabled: true
+    functions:
+      - name: "api-handler"
+        runtime: "python3.9"
+        handler: "main.lambda_handler"
+        filename: "lambda-deployment-package.zip"
+        timeout: 30
+        memory_size: 128
+        environment_variables:
+          STAGE: "dev"
+          DEBUG: "true"
+      - name: "data-processor"
+        runtime: "python3.9"
+        handler: "processor.main"
+        filename: "processor-deployment-package.zip"
+        timeout: 300
+        memory_size: 512
+        environment_variables:
+          BATCH_SIZE: "100"
+
+  # S3 Buckets
+  s3:
+    enabled: true
+    buckets:
+      - name: "app-data"
+        versioning: true
+        encryption: true
+        lifecycle_rules:
+          - id: "archive_old_data"
+            enabled: true
+            expiration_days: 90
+            noncurrent_version_expiration_days: 30
+      - name: "static-assets"
+        versioning: false
+        encryption: true
+        public_read_access: true
+        cors_rules:
+          - allowed_headers: ["*"]
+            allowed_methods: ["GET", "HEAD"]
+            allowed_origins: ["*"]
+            max_age_seconds: 3600
+
+  # CloudWatch Monitoring
+  cloudwatch:
+    enabled: true
+    log_groups:
+      - name: "/aws/lambda/api-handler"
+        retention_days: 7
+      - name: "/aws/lambda/data-processor"
+        retention_days: 14
+      - name: "/aws/eks/primary/cluster"
+        retention_days: 30
+
+    dashboard_config:
+      name: "app-monitoring"
+      widgets:
+        - type: "metric"
+          properties:
+            metrics:
+              - namespace: "AWS/Lambda"
+                metric_name: "Duration"
+                dimensions:
+                  FunctionName: "api-handler"
+              - namespace: "AWS/Lambda"
+                metric_name: "Errors"
+                dimensions:
+                  FunctionName: "api-handler"
+            title: "Lambda Performance"
+            region: "us-west-2"
+
+    metric_alarms:
+      - name: "lambda-error-rate"
+        metric_name: "Errors"
+        namespace: "AWS/Lambda"
+        statistic: "Sum"
+        threshold: 5
+        comparison_operator: "GreaterThanThreshold"
+        evaluation_periods: 2
+        period: 300
+        dimensions:
+          FunctionName: "api-handler"
+        alarm_description: "Lambda function error rate is too high"
+        notification_topics:
+          - name: "alerts"
+            endpoints:
+              - protocol: "email"
+                endpoint: "admin@example.com"
+
+# GCP Configuration
+gcp:
+  enabled: true
+  project_id: "my-gcp-project"
+
+  # GKE Kubernetes Clusters
+  kubernetes:
+    enabled: true
+    clusters:
+      - name: "primary"
+        location: "us-central1-a"
+        initial_node_count: 1
+        node_config:
+          machine_type: "e2-medium"
+          disk_size_gb: 20
+          oauth_scopes:
+            - "https://www.googleapis.com/auth/cloud-platform"
+        remove_default_node_pool: true
+
+        node_pools:
+          - name: "workers"
+            initial_node_count: 2
+            node_count: 2
+            node_config:
+              machine_type: "e2-standard-2"
+              disk_size_gb: 30
+              preemptible: true
+              oauth_scopes:
+                - "https://www.googleapis.com/auth/cloud-platform"
+            autoscaling:
+              min_node_count: 1
+              max_node_count: 5
+
+  # Cloud Functions
+  cloud_function:
+    enabled: true
+    functions:
+      - name: "api-endpoint"
+        runtime: "python39"
+        entry_point: "main"
+        source_archive_bucket: "my-functions-bucket"
+        source_archive_object: "function-source.zip"
+        trigger:
+          https_trigger: {}
+        environment_variables:
+          ENV: "dev"
+        memory: 256
+        timeout: 60
+      - name: "pubsub-processor"
+        runtime: "python39"
+        entry_point: "process_message"
+        source_archive_bucket: "my-functions-bucket"
+        source_archive_object: "processor-source.zip"
+        trigger:
+          event_trigger:
+            event_type: "providers/cloud.pubsub/eventTypes/topic.publish"
+            resource: "projects/my-gcp-project/topics/data-events"
+        environment_variables:
+          PROJECT_ID: "my-gcp-project"
+        memory: 512
+        timeout: 300
+
+  # Cloud Storage
+  storage:
+    enabled: true
+    buckets:
+      - name: "app-storage"
+        location: "US"
+        force_destroy: true
+        uniform_bucket_level_access: true
+        versioning: true
+        lifecycle_rules:
+          - condition:
+              age: 30
+              matches_storage_class: ["STANDARD"]
+            action:
+              type: "SetStorageClass"
+              storage_class: "NEARLINE"
+          - condition:
+              age: 90
+            action:
+              type: "Delete"
+      - name: "my-functions-bucket"
+        location: "US-CENTRAL1"
+        force_destroy: true
+
+  # Cloud Monitoring
+  monitoring:
+    enabled: true
+    uptime_checks:
+      - display_name: "API Health Check"
+        timeout: "10s"
+        period: "60s"
+        http_check:
+          path: "/health"
+          port: 80
+          request_method: "GET"
+        monitored_resource:
+          type: "uptime_url"
+          labels:
+            host: "my-app.example.com"
+
+    alert_policies:
+      - display_name: "High Error Rate"
+        documentation:
+          content: "API error rate is above threshold"
+        conditions:
+          - display_name: "Error rate condition"
+            condition_threshold:
+              filter: 'resource.type="gce_instance"'
+              comparison: "COMPARISON_GT"
+              threshold_value: 0.1
+              duration: "300s"
+        notification_channels: []
+
+# Global Settings
+tags:
+  Project: "my-app"
+  Owner: "platform-team"
+  CostCenter: "engineering"
+
+# Terraform Backend Configuration (optional)
+terraform:
+  backend:
+    type: "gcs"  # or "s3"
+    config:
+      bucket: "my-terraform-state"
+      prefix: "multi-cloud"
