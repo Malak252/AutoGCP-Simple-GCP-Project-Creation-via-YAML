@@ -1,40 +1,47 @@
 
+terraform {
+  required_version = ">= 1.0"
+  
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 4.84"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 4.84"
+    }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+# Configure Google provider (only when using GCP)
 provider "google" {
-  alias       = "gcp"
-  project     = var.gcp_project
-  region      = var.gcp_region
-  credentials = file(var.gcp_credentials_path)
+  count   = var.cloud_provider == "gcp" ? 1 : 0
+  project = var.gcp_config.project_id
+  region  = var.gcp_config.region
 }
 
+provider "google-beta" {
+  count   = var.cloud_provider == "gcp" ? 1 : 0
+  project = var.gcp_config.project_id
+  region  = var.gcp_config.region
+}
+
+# Configure AWS provider (only when using AWS)
 provider "aws" {
-  alias      = "aws"
-  region     = var.aws_region
-  access_key = var.aws_access_key
-  secret_key = var.aws_secret_key
-}
-
-module "gcp_resources" {
-  source = "./modules/gcp"
-  count  = var.gcp_enabled ? 1 : 0
-
-  providers = {
-    google = google.gcp
+  count  = var.cloud_provider == "aws" ? 1 : 0
+  region = var.aws_config.region
+  
+  default_tags {
+    tags = merge(var.labels, {
+      Environment   = var.environment
+      Project      = var.project_name
+      ManagedBy    = "terraform"
+      CloudProvider = "aws"
+    })
   }
-
-  project_id = var.gcp_project
-  region     = var.gcp_region
 }
-
-module "aws_resources" {
-  source = "./modules/aws"
-  count  = var.aws_enabled ? 1 : 0
-
-  providers = {
-    aws = aws.aws
-  }
-
-  region     = var.aws_region
-  access_key = var.aws_access_key
-  secret_key = var.aws_secret_key
-}
-

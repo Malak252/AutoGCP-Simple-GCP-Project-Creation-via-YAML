@@ -1,0 +1,59 @@
+# Simplified Multi-Cloud Infrastructure Configuration
+# This file defines what infrastructure to deploy across AWS and GCP
+
+project:
+  name: "test-app"
+  environment: "dev"
+  region:
+    aws: "us-west-2"
+    gcp: "us-central1"
+
+# AWS Configuration
+aws:
+  enabled: true
+
+  # EKS Kubernetes Clusters
+  eks:
+    enabled: true
+    clusters:
+      - name: "primary"
+        node_groups:
+          - name: "workers"
+            instance_types: ["t3.medium"]
+            min_size: 1
+            max_size: 3
+            desired_size: 2
+
+  # Lambda Functions
+  lambda:
+    enabled: true
+    functions:
+      - name: "api-handler"
+        runtime: "python3.9"
+        handler: "main.lambda_handler"
+        filename: "lambda-deployment-package.zip"
+
+  # S3 Buckets
+  s3:
+    enabled: true
+    buckets:
+      - name: "app-data"
+        versioning: true
+
+  # CloudWatch Monitoring
+  cloudwatch:
+    enabled: true
+    log_groups:
+      - name: "/aws/lambda/api-handler"
+        retention_days: 7
+
+# GCP Configuration (disabled for this test)
+gcp:
+  enabled: false
+  project_id: "my-gcp-project"
+
+# Global Settings
+tags:
+  Project: "test-app"
+  Owner: "platform-team"
+  Environment: "dev"
