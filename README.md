@@ -107,9 +107,9 @@ You apply or destroy as usual.
 👩‍💻 Authors
 Built with ❤️ by:
 
-Malak Wagieh – GCP & DevOps Logic, YAML Parser, Terraform GCP Modules
+Malak Wagieh – GCP & DevOps Logic, YAML Parser, Terraform AWS Modules
 
-Shahd Samir – Terraform AWS Modules, Cleanup Scripting, Testing Support
+Shahd Samir –  Terraform GCP Modules, Cleanup Scripting, Testing Support
 
 🛡️ License
 MIT License © Malak Wagieh & Shahd Samir
